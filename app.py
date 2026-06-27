@@ -10,12 +10,16 @@ from PIL import Image
 
 app = Flask(__name__)
 
-# 🛑 CRITICAL FIX: Pulls key from the server environment, NOT from this text!
+# Pulls key from the server environment
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
+# 🛑 BULLETPROOF FIX 1: Use an absolute path so Gunicorn can't lose the database
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'community_hero.db')
+
 def init_db():
-    conn = sqlite3.connect('community_hero.db')
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS reports (
@@ -30,8 +34,8 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    
-    init_db()
+
+init_db()
 
 class IssueAnalysis(BaseModel):
     category: Literal["Pothole", "Waste Management", "Streetlight", "Water Leakage", "Other"] = Field(description="Categorize the civic issue shown in the image.")
@@ -54,6 +58,9 @@ def analyze_issue():
     latitude = request.form.get('latitude', '')
     longitude = request.form.get('longitude', '')
 
+    # 🛑 BULLETPROOF FIX 2: Force the database to initialize right before we use it
+    init_db()
+
     try:
         img = Image.open(file.stream)
         prompt = "You are an automated civic triage assistant. Analyze this image of public infrastructure damage. Categorize it, determine severity, and provide a brief analysis."
@@ -69,7 +76,8 @@ def analyze_issue():
         
         gemini_data = json.loads(response.text)
         
-        conn = sqlite3.connect('community_hero.db')
+        # Connect using the absolute path
+        conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO reports (category, severity, analysis, latitude, longitude)
@@ -85,6 +93,5 @@ def analyze_issue():
 
 if __name__ == '__main__':
     init_db()
-    # Required for Cloud Deployments
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
