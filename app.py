@@ -30,6 +30,8 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    
+    init_db()
 
 class IssueAnalysis(BaseModel):
     category: Literal["Pothole", "Waste Management", "Streetlight", "Water Leakage", "Other"] = Field(description="Categorize the civic issue shown in the image.")
